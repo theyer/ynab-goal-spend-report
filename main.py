@@ -1,9 +1,10 @@
 """Script to analyze YNAB category spend vs. goals"""
 
-import json
+import configparser
+import ynab_fetcher
 from operator import attrgetter
 
-BUDGET_FILE = './data/budget_092022.json'
+CONFIG_FILE = 'config.ini'
 HOUSE_CATEGORY_NAME = 'House'
 FAILURE_ICON = '\U0000274C'  # Red X
 SUCCESS_ICON = '\U00002705'  # Green check mark
@@ -40,9 +41,13 @@ class Category:
 #   return category['goal_type'] == 'NEED'
 
 def main():
-  with open(BUDGET_FILE) as f:
-    data = json.load(f)
-  
+  config = configparser.ConfigParser()
+  config.read(CONFIG_FILE)
+  default_config = config['DEFAULT']
+  ynab_config = config['api.youneedabudget.com']
+  data = ynab_fetcher.GetBudgetMonth(
+      ynab_config['ApiKey'], ynab_config['BudgetId'], ynab_config['Month'], default_config.getboolean('CacheBudget'))
+
   categories = [Category(c) for c in data['data']['month']['categories']]
   savings_categories = [c for c in categories if c.isSavingCategory()]
   spending_categories = [c for c in categories if c.isSpendingCategory()]

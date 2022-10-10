@@ -2,6 +2,7 @@
 
 import configparser
 import ynab_fetcher
+from datetime import date
 from operator import attrgetter
 
 CONFIG_FILE = 'config.ini'
@@ -16,29 +17,35 @@ class Category:
     self.goal = round(int(category_json['goal_target']) / 1000)
     self.spend = round(int(category_json['activity']) / 1000) * -1
     self.over_budget = self.spend > self.goal
+    self.goal_type = category_json['goal_type']
   
-  def isSpendingCategory(self):
-    return self.goal != 0 and not self.isSavingCategory()
+  def isMonthlySpendingCategory(self):
+    return (self.goal != 0 and not self.isSavingCategory() and self.goal_type == 'NEED')
+
+  def isNonMonthlySpendingCategory(self):
+    return (self.goal != 0 and not self.isSavingCategory() and self.goal_type != 'NEED')
 
   def isSavingCategory(self):
     return self.name == HOUSE_CATEGORY_NAME
 
   def getOutput(self):
-    if self.isSpendingCategory():
+    if self.isMonthlySpendingCategory():
       icon = FAILURE_ICON if self.over_budget else SUCCESS_ICON
       spend_diff = abs(self.spend - self.goal)
       over_under_str = 'over' if self.over_budget else 'under'
       return f'{icon} {self.name}: ${spend_diff} {over_under_str} budget (Goal: {self.goal}, Spend: {self.spend})'
+    elif self.isNonMonthlySpendingCategory():
+      budgeted_over_goal = self.budgeted > self.goal
+      icon = FAILURE_ICON if budgeted_over_goal else SUCCESS_ICON
+      spend_diff = abs(self.budgeted - self.goal)
+      over_under_str = 'over' if budgeted_over_goal else 'under'
+      return f'{icon} {self.name}: ${spend_diff} {over_under_str} budget (Goal: {self.goal}, Budgeted: {self.budgeted}, Spend: {self.spend})'
     elif self.isSavingCategory():
       budgeted_to_goal = self.budgeted >= self.goal
       icon = SUCCESS_ICON if budgeted_to_goal else FAILURE_ICON
       save_diff = abs(self.budgeted - self.goal)
       over_under_str = 'over' if budgeted_to_goal else 'under'
       return f'{icon} {self.name}: ${save_diff} {over_under_str} goal (Goal: {self.goal}, Budgeted: {self.budgeted})'
-
-# TODO: factor in different goal types
-# def isMonthlySpendCategory(category):
-#   return category['goal_type'] == 'NEED'
 
 def main():
   config = configparser.ConfigParser()
@@ -50,18 +57,27 @@ def main():
 
   categories = [Category(c) for c in data['data']['month']['categories']]
   savings_categories = [c for c in categories if c.isSavingCategory()]
-  spending_categories = [c for c in categories if c.isSpendingCategory()]
+  monthly_spending_categories = [c for c in categories if c.isMonthlySpendingCategory()]
+  non_monthly_spending_categories = [c for c in categories if c.isNonMonthlySpendingCategory()]
   
-  print('Savings Report')
-  print('-----------------------------------------------------')
+  report_date = date.fromisoformat(ynab_config['Month'])
+  report_date_str = report_date.strftime('%B %Y')
+  print(f'Report: {report_date_str}')
+  print('\n')
+  print('------ Savings Report ------')
   [print(o.getOutput()) for o in savings_categories]
   print('\n')
-  print('Spending Report')
-  print('-----------------------------------------------------')
+  print('------ Monthly Spending Report ------')
   # Sort on secondary key, then primary key
-  spending_categories.sort(key=attrgetter('name'))
-  spending_categories.sort(key=attrgetter('over_budget'), reverse=True)
-  [print(o.getOutput()) for o in spending_categories]
+  monthly_spending_categories.sort(key=attrgetter('name'))
+  monthly_spending_categories.sort(key=attrgetter('over_budget'), reverse=True)
+  [print(o.getOutput()) for o in monthly_spending_categories]
+  print('\n')
+  print('------ Non-Monthly Spending Report ------')
+  # Sort on secondary key, then primary key
+  non_monthly_spending_categories.sort(key=attrgetter('name'))
+  non_monthly_spending_categories.sort(key=attrgetter('over_budget'), reverse=True)
+  [print(o.getOutput()) for o in non_monthly_spending_categories]
 
 if __name__ == "__main__":
   main()
